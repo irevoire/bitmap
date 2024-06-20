@@ -1,5 +1,6 @@
 use core::fmt;
 
+#[derive(Clone)]
 pub struct Bitmap {
     len: usize,
     store: [usize; Self::BITMAP_SIZE],
@@ -126,10 +127,10 @@ impl PartialEq for Bitmap {
     }
 }
 
-impl std::ops::BitOr for Bitmap {
+impl std::ops::BitOr<&Bitmap> for Bitmap {
     type Output = Bitmap;
 
-    fn bitor(mut self, rhs: Self) -> Self::Output {
+    fn bitor(mut self, rhs: &Self) -> Self::Output {
         let mut count = 0;
         for index in 0..self.store.len() {
             self.store[index] |= rhs.store[index];
@@ -141,10 +142,18 @@ impl std::ops::BitOr for Bitmap {
     }
 }
 
-impl std::ops::BitAnd for Bitmap {
+impl std::ops::BitOr for Bitmap {
     type Output = Bitmap;
 
-    fn bitand(mut self, rhs: Self) -> Self::Output {
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self | &rhs
+    }
+}
+
+impl std::ops::BitAnd<&Bitmap> for Bitmap {
+    type Output = Bitmap;
+
+    fn bitand(mut self, rhs: &Self) -> Self::Output {
         let mut count = 0;
         for index in 0..self.store.len() {
             self.store[index] &= rhs.store[index];
@@ -152,6 +161,14 @@ impl std::ops::BitAnd for Bitmap {
         }
         self.len = count as usize;
         self
+    }
+}
+
+impl std::ops::BitAnd for Bitmap {
+    type Output = Bitmap;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        self & &rhs
     }
 }
 
