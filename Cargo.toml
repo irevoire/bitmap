@@ -1,0 +1,10 @@
+[package]
+name = "bitmap"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[dev-dependencies]
+insta = "1.39.0"
+proptest = "1.4.0"
