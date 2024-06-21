@@ -1,13 +1,15 @@
 use core::fmt;
 
+type Word = u128;
+
 #[derive(Clone)]
 pub struct Bitmap {
     len: usize,
-    store: [usize; Self::BITMAP_SIZE],
+    store: [Word; Self::BITMAP_SIZE],
 }
 
 impl Bitmap {
-    const BITMAP_SIZE: usize = (u16::MAX as usize + 1) / usize::BITS as usize;
+    const BITMAP_SIZE: usize = (u16::MAX as usize + 1) / Word::BITS as usize;
 
     #[inline]
     pub const fn new() -> Self {
@@ -18,7 +20,7 @@ impl Bitmap {
     }
 
     #[inline]
-    pub fn internal_store(&self) -> &[usize; Self::BITMAP_SIZE] {
+    pub fn internal_store(&self) -> &[Word; Self::BITMAP_SIZE] {
         &self.store
     }
 
@@ -34,12 +36,12 @@ impl Bitmap {
 
     #[inline]
     fn key(index: u16) -> usize {
-        index as usize / usize::BITS as usize
+        index as usize / Word::BITS as usize
     }
 
     #[inline]
     fn bit(index: u16) -> usize {
-        index as usize % usize::BITS as usize
+        index as usize % Word::BITS as usize
     }
 
     /// Returns `true` if the value was already present in the bitmap.
@@ -49,7 +51,7 @@ impl Bitmap {
         let new_w = old_w | 1 << bit;
         let inserted = (old_w ^ new_w) >> bit;
         self.store[key] = new_w;
-        self.len += inserted;
+        self.len += inserted as usize;
         inserted != 0
     }
 
@@ -60,7 +62,7 @@ impl Bitmap {
         let new_w = old_w & !(1 << bit);
         let removed = (old_w ^ new_w) >> bit;
         self.store[key] = new_w;
-        self.len -= removed;
+        self.len -= removed as usize;
         removed != 0
     }
 
@@ -71,13 +73,13 @@ impl Bitmap {
 
     pub fn to_vec(&self) -> Vec<u16> {
         let mut ret = Vec::with_capacity(self.len);
-        let mut word = Vec::with_capacity(usize::BITS as usize);
+        let mut word = Vec::with_capacity(Word::BITS as usize);
         let mut current_idx = 0_u16;
 
         for mut current in self.store {
             if current.count_ones() != 0 {
                 word.clear();
-                for _ in (0..usize::BITS).rev() {
+                for _ in (0..Word::BITS).rev() {
                     if current & 1 == 1 {
                         word.push(current_idx);
                     }
@@ -91,7 +93,7 @@ impl Bitmap {
                 // this would panic if it was executed on the last word of the store
                 // but we should always enter either in the previous if, or the
                 // next one in the previous iteration of the loop.
-                current_idx += usize::BITS as u16;
+                current_idx += Word::BITS as u16;
             }
             if ret.len() == self.len {
                 break;
