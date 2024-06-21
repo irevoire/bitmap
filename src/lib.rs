@@ -1,6 +1,6 @@
 use core::fmt;
 
-type Word = u128;
+type Word = u64;
 
 #[derive(Clone)]
 pub struct Bitmap {
@@ -71,6 +71,47 @@ impl Bitmap {
         self.store[Self::key(index)] & (1 << Self::bit(index)) != 0
     }
 
+    #[inline]
+    pub fn intersection(&mut self, other: &Self) {
+        let mut count = 0;
+        for index in 0..self.store.len() {
+            self.store[index] &= other.store[index];
+            count += self.store[index].count_ones();
+        }
+        self.len = count as usize;
+    }
+
+    #[inline]
+    pub fn intersection_simd(&mut self, other: &Self) {
+        use core::arch::aarch64::*;
+
+        let mut left = self.store.as_mut_ptr();
+        let mut right = other.store.as_ptr();
+        let mut count = 0;
+
+        unsafe {
+            for _ in 0..(Self::BITMAP_SIZE / 2) {
+                // load the data into the register
+                let left_lane = vld1q_u64(left);
+                let right_lane = vld1q_u64(right);
+
+                let ret = vandq_u64(left_lane, right_lane);
+                vst1q_u64(left, ret);
+
+                // update the count
+                let p8_count = vcntq_u8(vreinterpretq_u8_u64(ret));
+                let p8_count = vaddvq_u8(p8_count);
+                count += p8_count as usize;
+
+                // increase the ptr
+                left = left.add(2);
+                right = right.add(2);
+            }
+        }
+
+        self.len = count;
+    }
+
     pub fn to_vec(&self) -> Vec<u16> {
         let mut ret = Vec::with_capacity(self.len);
         let mut word = Vec::with_capacity(Word::BITS as usize);
@@ -136,7 +177,6 @@ impl std::ops::BitOr<&Bitmap> for Bitmap {
         let mut count = 0;
         for index in 0..self.store.len() {
             self.store[index] |= rhs.store[index];
-            dbg!(self.store[index]);
             count += self.store[index].count_ones();
         }
         self.len = count as usize;
@@ -156,12 +196,7 @@ impl std::ops::BitAnd<&Bitmap> for Bitmap {
     type Output = Bitmap;
 
     fn bitand(mut self, rhs: &Self) -> Self::Output {
-        let mut count = 0;
-        for index in 0..self.store.len() {
-            self.store[index] &= rhs.store[index];
-            count += self.store[index].count_ones();
-        }
-        self.len = count as usize;
+        self.intersection(rhs);
         self
     }
 }
@@ -261,7 +296,7 @@ mod test {
     fn and() {
         let left = Bitmap::from_iter((0..10).step_by(2).chain(10..15));
         let right = Bitmap::from_iter((1..10).step_by(2).chain(10..15));
-        let ret = left & right;
+        let ret = left.clone() & &right;
 
         insta::assert_debug_snapshot!(ret.len(), @"5");
         insta::assert_debug_snapshot!(ret, @r###"
@@ -273,6 +308,38 @@ mod test {
             14,
         }
         "###);
+
+        let mut simd = left.clone();
+        simd.intersection_simd(&right);
+        assert_eq!(ret.store, simd.store);
+        insta::assert_debug_snapshot!(simd.len(), @"5");
+        insta::assert_debug_snapshot!(simd, @r###"
+        {
+            10,
+            11,
+            12,
+            13,
+            14,
+        }
+        "###);
+    }
+
+    #[test]
+    fn bug_1() {
+        let left = Bitmap::from_iter(Some(128));
+        let right = Bitmap::from_iter(Some(0));
+        let ret = left.clone() & &right;
+
+        insta::assert_debug_snapshot!(ret.len(), @"0");
+        insta::assert_debug_snapshot!(ret, @"{}");
+
+        let mut simd = left.clone();
+        simd.intersection_simd(&right);
+        insta::assert_debug_snapshot!(simd.len(), @"0");
+        insta::assert_debug_snapshot!(simd, @"{}");
+
+        // Check the actual store without going through the Debug implementation
+        assert_eq!(ret.store, simd.store);
     }
 
     #[test]
@@ -326,6 +393,18 @@ mod test {
             hashset.sort_unstable();
 
             assert_eq!(bitmap.to_vec(), hashset);
+        }
+
+        #[test]
+        fn prop_simd_and(left in prop::collection::vec(0..=u16::MAX, 1..150), right in prop::collection::vec(0..=u16::MAX, 1..150)) {
+            let bleft = Bitmap::from_iter(&left);
+            let bright = Bitmap::from_iter(&right);
+            let classic = bleft.clone() & &bright;
+            let mut simd = bleft.clone();
+            simd.intersection_simd(&bright);
+
+            assert_eq!(classic.len(), simd.len());
+            assert_eq!(classic, simd, "\nclassic:\n{classic:?}\nsimd:\n{simd:?}");
         }
 
         #[test]
