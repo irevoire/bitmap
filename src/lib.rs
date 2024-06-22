@@ -292,6 +292,18 @@ mod test {
     }
 
     #[test]
+    fn full_size() {
+        let orig = Bitmap::full();
+        assert_eq!(orig.len(), u16::MAX as usize + 1);
+        let mut other = Bitmap::full();
+        other.intersection(&orig);
+        assert_eq!(orig, other);
+
+        other.intersection_simd(&orig);
+        assert_eq!(orig, other);
+    }
+
+    #[test]
     fn contains() {
         let mut bitmap = Bitmap::new();
         bitmap.insert(32);
