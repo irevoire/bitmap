@@ -20,6 +20,14 @@ impl Bitmap {
     }
 
     #[inline]
+    pub const fn full() -> Self {
+        Bitmap {
+            len: u16::MAX as usize + 1,
+            store: [Word::MAX; Self::BITMAP_SIZE],
+        }
+    }
+
+    #[inline]
     pub fn internal_store(&self) -> &[Word; Self::BITMAP_SIZE] {
         &self.store
     }
@@ -45,6 +53,7 @@ impl Bitmap {
     }
 
     /// Returns `true` if the value was already present in the bitmap.
+    #[inline]
     pub fn insert(&mut self, value: u16) -> bool {
         let (key, bit) = (Self::key(value), Self::bit(value));
         let old_w = self.store[key];
@@ -56,6 +65,7 @@ impl Bitmap {
     }
 
     /// Returns `true` if the value was already present in the bitmap.
+    #[inline]
     pub fn remove(&mut self, value: u16) -> bool {
         let (key, bit) = (Self::key(value), Self::bit(value));
         let old_w = self.store[key];
@@ -67,6 +77,7 @@ impl Bitmap {
     }
 
     /// Returns `true` if the value was present in the bitmap.
+    #[inline]
     pub fn contains(&self, index: u16) -> bool {
         self.store[Self::key(index)] & (1 << Self::bit(index)) != 0
     }
@@ -322,6 +333,18 @@ mod test {
             14,
         }
         "###);
+    }
+
+    #[test]
+    fn and_max() {
+        let left = Bitmap::full();
+        let right = Bitmap::full();
+        let ret = left.clone() & &right;
+
+        let mut simd = left.clone();
+        simd.intersection_simd(&right);
+        assert_eq!(ret.len, simd.len);
+        assert_eq!(ret.store, simd.store);
     }
 
     #[test]
